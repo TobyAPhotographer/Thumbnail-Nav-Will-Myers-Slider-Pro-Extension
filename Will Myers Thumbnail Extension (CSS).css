@@ -1,0 +1,95 @@
+/* =====================================================================================
+   WM Thumbnail Nav + Dynamic Header + Custom Hamburger (Squarespace / Will Myers)
+   (fix: no-crop for expanded thumb via configurable borders + bleed; absolute anchoring)
+   NEW: mobileDisableThumbnailsOnly — hides just thumbnails on mobile (keeps header features)
+   ===================================================================================== */
+
+/* ╔══════════════════════════════════════════════════════════════════════════════════╗
+   ║ [A] BASE STYLES                                                                 ║
+   ╚══════════════════════════════════════════════════════════════════════════════════╝ */
+
+/* A1) Container & presets */
+.auto-thumbnail-nav{position:absolute;display:flex;z-index:1000}
+.auto-thumbnail-nav.pin-mode{position:fixed;z-index:10000}
+.auto-thumbnail-nav.horizontal{flex-direction:row;flex-wrap:nowrap;align-items:center}
+.auto-thumbnail-nav.vertical{flex-direction:column;flex-wrap:nowrap;align-items:flex-start}
+
+/* A2) Timeline track (off-track thumbs are clipped; JS adds padding so actives never clip) */
+.auto-thumbnail-nav.timeline-mode{
+  display:block; overflow:hidden;
+  position:relative; box-sizing:content-box;
+}
+
+/* A3) Preset positions (base; JS may also enforce anchoring) */
+.auto-thumbnail-nav.bottom-center{bottom:40px;left:50%;transform:translateX(-50%)}
+.auto-thumbnail-nav.bottom-left{bottom:40px;left:40px}
+.auto-thumbnail-nav.bottom-right{bottom:40px;right:40px}
+.auto-thumbnail-nav.top-center{top:40px;left:50%;transform:translateX(-50%)}
+.auto-thumbnail-nav.top-left{top:40px;left:40px}
+.auto-thumbnail-nav.top-right{top:40px;right:40px}
+.auto-thumbnail-nav.middle-left{top:50%;left:40px;transform:translateY(-50%)}
+.auto-thumbnail-nav.middle-right{top:50%;right:40px;transform:translateY(-50%)}
+.auto-thumbnail-nav.middle-center{top:50%;left:50%;transform:translate(-50%,-50%)}
+
+/* A4) Thumbnails (use CSS variables so JS can set sizes from settings) */
+.auto-slide-thumbnail{
+  --wm-thumb-border: 2px;
+  --wm-thumb-border-active: 6px;
+  background-size:cover;background-position:center;border-radius:6px;cursor:pointer;opacity:.6;
+  transition:all .3s cubic-bezier(.4,0,.2,1)!important;border:var(--wm-thumb-border) solid transparent;box-sizing:border-box;flex-shrink:0;z-index:1;
+  transform:scale(1)!important;position:relative;
+}
+.auto-slide-thumbnail:hover{opacity:.9!important;transform:scale(1.12)!important;z-index:5!important;border-color:rgba(255,255,255,.7)!important;box-shadow:0 2px 8px rgba(0,0,0,.2)!important}
+/* steady in timeline */
+.auto-thumbnail-nav.timeline-mode .auto-slide-thumbnail:hover{ transform:scale(1)!important }
+
+.auto-slide-thumbnail.active{
+  opacity:1!important;border-color:#fff!important;border-width:var(--wm-thumb-border-active)!important
+}
+.auto-slide-thumbnail.clicked-active{transform:scale(1.15)!important;z-index:5!important;opacity:1!important;border-color:#fff!important;border-width:var(--wm-thumb-border-active)!important;box-shadow:0 4px 12px rgba(0,0,0,.4)!important}
+.auto-slide-thumbnail.clicked-active:hover{transform:scale(1.2)!important;box-shadow:0 6px 16px rgba(0,0,0,.5)!important}
+
+/* A5) Hide off-track thumbs fully (timeline) */
+.auto-slide-thumbnail.wm-hidden{
+  opacity:0 !important; visibility:hidden !important; pointer-events:none !important; transform:scale(.9) !important; z-index:0 !important;
+}
+
+/* A6) Scoped header colors (do not touch Will Myers arrows) */
+[data-wm-color-scope] .header-actions a,
+[data-wm-color-scope] .header-actions [role="link"],
+[data-wm-color-scope] .header-nav-list a,
+[data-wm-color-scope] .site-navigation a,
+[data-wm-color-scope] .header-actions svg,
+[data-wm-color-scope] .header-burger svg{
+  transition:color .42s ease, fill .42s ease, stroke .42s ease
+}
+[data-wm-color-scope] .swiper-button-prev,
+[data-wm-color-scope] .swiper-button-next,
+[data-wm-color-scope] .swiper-button-prev *,
+[data-wm-color-scope] .swiper-button-next *,
+[data-wm-color-scope] .wm-arrow,
+[data-wm-color-scope] .wm-arrow *{
+  color:unset!important; fill:unset!important; stroke:unset!important
+}
+
+/* A7) Mobile hamburger overlay / recolor */
+@media (max-width:768px){
+  [data-wm-hamburger]{
+    position:relative!important; min-width:44px!important; min-height:44px!important;
+    display:inline-flex!important; align-items:center!important; justify-content:center!important; -webkit-tap-highlight-color:transparent
+  }
+  [data-wm-hamburger] > *{ opacity:0!important }
+  [data-wm-hamburger]::before,[data-wm-hamburger]::after{
+    content:''; position:absolute; left:50%; width:20px; height:2px; background:var(--wm-burger, #fff);
+    transform:translateX(-50%); transition:transform .25s ease, box-shadow .25s ease, opacity .2s ease, background .25s ease; pointer-events:none
+  }
+  [data-wm-hamburger]::before{ top:50%; box-shadow:0 -6px 0 var(--wm-burger, #fff), 0 6px 0 var(--wm-burger, #fff) }
+  [data-wm-hamburger]::after{ top:50%; opacity:1 }
+  [data-wm-hamburger][aria-expanded="true"]::before,[data-wm-hamburger].is-open::before{ box-shadow:none; transform:translateX(-50%) rotate(45deg) }
+  [data-wm-hamburger][aria-expanded="true"]::after,[data-wm-hamburger].is-open::after{ opacity:1; transform:translateX(-50%) rotate(-45deg) }
+
+  .sqs-mobile-menu-toggle svg *, .header-burger svg *, .mobile-nav-toggle svg *, .header-menu-toggle svg *,
+  button[aria-controls*="header"] svg *, [data-action="toggle-mobile-menu"] svg *{
+    stroke:var(--wm-burger, #fff)!important; fill:var(--wm-burger, #fff)!important;
+  }
+}
