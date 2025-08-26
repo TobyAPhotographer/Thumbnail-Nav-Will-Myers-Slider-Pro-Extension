@@ -6,7 +6,6 @@
      • dynamicFooter — per-slide footer image OR hex color, link/text/icon color, optional logo, optional overlay
      • dynamicHeader/ dynamicFooter — optional overlay via hex + opacity
    ===================================================================================== -->
-<script>
 (function(){
 'use strict';
 
@@ -723,4 +722,3 @@ document.addEventListener('DOMContentLoaded', ()=>{
   watchForSlides();
 });
 })();
-</script>
