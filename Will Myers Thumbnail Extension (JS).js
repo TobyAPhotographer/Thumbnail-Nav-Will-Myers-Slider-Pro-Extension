@@ -1,9 +1,12 @@
-/* =====================================================================================
-   WM Thumbnail Nav + Dynamic Header + Custom Hamburger (Squarespace / Will Myers)
+<!-- =====================================================================================
+   WM Thumbnail Nav + Dynamic Header + Dynamic Footer + Custom Hamburger (Squarespace / Will Myers)
    (fix: no-crop for expanded thumb via configurable borders + bleed; absolute anchoring)
-   NEW: mobileDisableThumbnailsOnly — hides just thumbnails on mobile (keeps header features)
-   ===================================================================================== */
-
+   NEW:
+     • mobileDisableThumbnailsOnly — hides just thumbnails on mobile (keeps header/footer features)
+     • dynamicFooter — per-slide footer image OR hex color, link/text/icon color, optional logo, optional overlay
+     • dynamicHeader/ dynamicFooter — optional overlay via hex + opacity
+   ===================================================================================== -->
+<script>
 (function(){
 'use strict';
 
@@ -20,8 +23,8 @@ const DEFAULTS = {
   manualPosition:{ top:'auto', bottom:'20px', left:'auto', right:'auto', transform:'none' },
 
   // Behavior on mobile
-  disableOnMobile:false,            // disables EVERYTHING on mobile (legacy)
-  mobileDisableThumbnailsOnly:false,// NEW: hides ONLY the thumbnails on mobile (header still works)
+  disableOnMobile:false,             // disables EVERYTHING on mobile (legacy)
+  mobileDisableThumbnailsOnly:false, // NEW: hides ONLY the thumbnails on mobile (header/footer still work)
 
   /* NEW: border controls */
   thumbBorder: 2,           // px, non-active border width
@@ -30,31 +33,53 @@ const DEFAULTS = {
   /* Timeline appearance */
   timelineScale: 1.22,      // scale for active thumb in timeline (1.0 = no scale)
 
-  /* Optional custom images */
+  /* Optional custom images for thumbnails */
   customImages:{ enabled:false, images:[] },
 
   mobileSettings:null,
 
-  /* Dynamic header/banner + colors */
+  /* ===================== Dynamic header (existing, expanded) ===================== */
   dynamicHeader:{
     enabled:false,
     selector:'[data-header-banner], .Header, .site-header, #header',
-    images:[],
-    backgroundColors:[],
-    navTextColors:[],
-    mobileNavTextColors:[],
-    desktopNavTextColors:[],
-    mobileHamburgerImages:[],
-    mobileMenuBackgroundColors:[],
-    logoImages:[],
+    images:[],                     // per-slide header image URL
+    backgroundColors:[],           // per-slide hex (e.g. "#0a0a0a")
+    navTextColors:[],              // fallback nav color
+    mobileNavTextColors:[],        // optional override for mobile
+    desktopNavTextColors:[],       // optional override for desktop
+    mobileHamburgerImages:[],      // can be hex like "#fff" to color burger
+    mobileMenuBackgroundColors:[], // bg color/image for mobile menu
+    logoImages:[],                 // per-slide logo src override
     transition:'fade',
     duration:'auto',
-    type:'background'
+    type:'background',
+    /* NEW: optional overlay/darken on header */
+    overlayHex:null,               // e.g. "#000000" or null
+    overlayOpacity:0               // 0..1
+  },
+
+  /* ====================== Dynamic footer (brand new) ============================= */
+  dynamicFooter:{
+    enabled:false,
+    selector:'[data-footer-banner], .Footer, .site-footer, footer, #footer, footer[role="contentinfo"], .sqs-site-footer',
+    images:[],                     // per-slide footer image URL
+    backgroundColors:[],           // per-slide hex (e.g. "#111827")
+    textColors:[],                 // footer text color
+    linkColors:[],                 // footer link color (falls back to textColors[i] if empty)
+    iconColors:[],                 // footer icon/svg color (falls back to textColors[i] if empty)
+    logoImages:[],                 // override footer logo img
+    transition:'fade',
+    duration:'auto',
+    type:'background',
+    /* NEW: optional overlay/darken on footer */
+    overlayHex:null,               // e.g. "#000000" or null
+    overlayOpacity:0               // 0..1
   }
 };
 
 /* ========================== B2. STATE & UTILITIES ================================ */
 let swiper=null, isMobile=window.innerWidth<=768, currentNav=null, slidesCache=null, sectionCache=null;
+
 const detectMobile=()=> window.innerWidth<=768;
 const deepMerge=(t,s)=>{ Object.keys(s).forEach(k=>{ if(s[k]&&typeof s[k]==='object'&&!Array.isArray(s[k])) t[k]=deepMerge({...(t[k]||{})},s[k]); else t[k]=s[k]; }); return t; };
 const getSettings=()=> deepMerge(JSON.parse(JSON.stringify(DEFAULTS)), window.thumbnailSettings||{});
@@ -66,9 +91,25 @@ const getCurrentSettings=()=>{
   return (!isMobile||!base.mobileSettings)? base : deepMerge(JSON.parse(JSON.stringify(base)), base.mobileSettings);
 };
 
-/* Dynamic header CSS bucket */
-const STYLE_ID='wm-dynamic-header-style';
-const injectHeaderCSS=css=>{
+/* Color utils */
+const clamp=(v,min,max)=> Math.min(max,Math.max(min,v));
+function hexToRgba(hex, alpha=1){
+  if(!hex || typeof hex!=='string') return null;
+  const h = hex.replace('#','').trim();
+  if(!/^[0-9a-fA-F]{3,8}$/.test(h)) return null;
+  let r,g,b;
+  if(h.length===3){
+    r=parseInt(h[0]+h[0],16); g=parseInt(h[1]+h[1],16); b=parseInt(h[2]+h[2],16);
+  }else{
+    r=parseInt(h.slice(0,2),16); g=parseInt(h.slice(2,4),16); b=parseInt(h.slice(4,6),16);
+  }
+  const a = clamp(+alpha||0,0,1);
+  return `rgba(${r},${g},${b},${a})`;
+}
+
+/* Single shared CSS bucket for header + footer */
+const STYLE_ID='wm-dynamic-hf-style';
+const injectHFCSS=(css)=>{
   const old=document.getElementById(STYLE_ID);
   if(old) old.remove();
   if(!css) return;
@@ -135,12 +176,16 @@ function extractImage(slide){
   return 'none';
 }
 
-/* ====================== B5. HEADER TARGETING & HAMBURGER ========================= */
-function clearBannerMarks(){
+/* ====================== B5. HEADER/FOOTER TARGETING + HAMBURGER ================== */
+function clearHeaderMarks(){
   document.querySelectorAll('[data-wm-banner]').forEach(el=>el.removeAttribute('data-wm-banner'));
   document.querySelectorAll('[data-wm-color-scope]').forEach(el=>el.removeAttribute('data-wm-color-scope'));
 }
-function chooseBannerEl(selectors){
+function clearFooterMarks(){
+  document.querySelectorAll('[data-wm-footer]').forEach(el=>el.removeAttribute('data-wm-footer'));
+  document.querySelectorAll('[data-wm-footer-color-scope]').forEach(el=>el.removeAttribute('data-wm-footer-color-scope'));
+}
+function chooseBiggestEl(selectors){
   const c=[];
   selectors.forEach(sel=>{
     document.querySelectorAll(sel).forEach(el=>{
@@ -151,11 +196,18 @@ function chooseBannerEl(selectors){
   if(!c.length) return null;
   return c.reduce((a,b)=> (a.getBoundingClientRect().height>=b.getBoundingClientRect().height? a : b));
 }
-function buildTargets(){
+function buildHeaderTargets(){
   const bannerCandidates=['[data-header-banner]','.Header','.site-header','#header','[data-controller="HeaderOverlay"]','header[role="banner"]','header.header'];
   const colorScopeCandidates=['.Header','.site-header','#header','[data-controller="HeaderOverlay"]','header[role="banner"]'];
   return {bannerCandidates, colorScopeCandidates};
 }
+function buildFooterTargets(){
+  const bannerCandidates=['[data-footer-banner]','.Footer','.site-footer','footer','#footer','footer[role="contentinfo"]','.sqs-site-footer'];
+  const colorScopeCandidates=['.Footer','.site-footer','footer','#footer','footer[role="contentinfo"]','.sqs-site-footer'];
+  return {bannerCandidates, colorScopeCandidates};
+}
+
+/* Hamburger (for header) */
 function flagHamburgerButtons(root=document){
   const sel=['.burger','.header-burger','[class*="burger"]','.mobile-nav-toggle','.sqs-mobile-menu-toggle','.header-menu-toggle','.header-actions .header-menu-toggle','button[aria-controls*="header"]','[data-action="toggle-mobile-menu"]'].join(',');
   root.querySelectorAll(sel).forEach(btn=>{
@@ -196,41 +248,30 @@ function syncHamburgerOpenState(){
   mo.observe(document.body,{attributes:true,attributeFilter:['class']});
 }
 
-/* ============================ B6. DYNAMIC HEADER ================================= */
-function updateHeader(index){
+/* ============================ B6. HEADER + FOOTER CSS ============================ */
+function buildHeaderCSS(index){
   const s=getSettings();
-  applyHamburgerColor(index);
+  const H=s.dynamicHeader;
+  if(!H.enabled){ clearHeaderMarks(); return ''; }
 
-  if(!s.dynamicHeader.enabled){
-    injectHeaderCSS('');
-    clearBannerMarks();
-    return;
-  }
+  const {bannerCandidates, colorScopeCandidates}=buildHeaderTargets();
 
-  const {bannerCandidates, colorScopeCandidates}=buildTargets();
-
-  const img=(s.dynamicHeader.images||[])[index]||'';
-  const bg=(s.dynamicHeader.backgroundColors||[])[index]||'';
+  const img=(H.images||[])[index]||'';
+  const bg =(H.backgroundColors||[])[index]||'';
 
   let nav='';
-  if(isMobile && s.dynamicHeader.mobileNavTextColors?.[index]) nav=s.dynamicHeader.mobileNavTextColors[index];
-  else if(!isMobile && s.dynamicHeader.desktopNavTextColors?.[index]) nav=s.dynamicHeader.desktopNavTextColors[index];
-  else if(s.dynamicHeader.navTextColors?.[index]) nav=s.dynamicHeader.navTextColors[index];
+  if(isMobile && H.mobileNavTextColors?.[index]) nav=H.mobileNavTextColors[index];
+  else if(!isMobile && H.desktopNavTextColors?.[index]) nav=H.desktopNavTextColors[index];
+  else if(H.navTextColors?.[index]) nav=H.navTextColors[index];
 
-  const logo=(s.dynamicHeader.logoImages||[])[index]||'';
-  const menuBg=(s.dynamicHeader.mobileMenuBackgroundColors||[])[index]||'';
+  const logo=(H.logoImages||[])[index]||'';
+  const menuBg=(H.mobileMenuBackgroundColors||[])[index]||'';
 
-  if(![img,bg,nav,logo,menuBg].some(v=>v&&String(v).trim())){
-    injectHeaderCSS('');
-    clearBannerMarks();
-    return;
-  }
-
-  let dur=s.dynamicHeader.duration;
+  let dur=H.duration;
   if(dur==='auto') dur=(swiper&&swiper.params&&swiper.params.speed)? swiper.params.speed : 500;
 
-  clearBannerMarks();
-  const bannerEl=chooseBannerEl(bannerCandidates);
+  clearHeaderMarks();
+  const bannerEl=chooseBiggestEl(bannerCandidates);
   if(bannerEl) bannerEl.setAttribute('data-wm-banner','');
 
   let colorScopeEl=null;
@@ -241,14 +282,34 @@ function updateHeader(index){
   if(!colorScopeEl) colorScopeEl=bannerEl;
   if(colorScopeEl) colorScopeEl.setAttribute('data-wm-color-scope','');
 
-  let css='/* wm dynamic header (scoped) */\n';
-  if(bannerEl && img){
-    css+=`[data-wm-banner]{background-image:url("${img}")!important;background-size:cover!important;background-position:center!important;background-repeat:no-repeat!important;transition:background ${dur}ms ease-in-out!important}\n`;
-  }else if(bannerEl && bg){
-    css+=`[data-wm-banner]{background-color:${bg}!important;background-image:none!important;transition:background-color ${dur}ms ease-in-out!important}\n`;
+  // If nothing to set, clear and bail
+  if(![img,bg,nav,logo,menuBg].some(v=>v&&String(v).trim()) && !(H.overlayHex && H.overlayOpacity>0)){
+    return '';
   }
+
+  const parts=[];
+  // background image or color
+  if(bannerEl && img){
+    parts.push(
+      `[data-wm-banner]{background-image:url("${img}")!important;background-size:cover!important;background-position:center!important;background-repeat:no-repeat!important;transition:background ${dur}ms ease-in-out!important;position:relative!important}`
+    );
+  }else if(bannerEl && bg){
+    parts.push(
+      `[data-wm-banner]{background-color:${bg}!important;background-image:none!important;transition:background-color ${dur}ms ease-in-out!important;position:relative!important}`
+    );
+  }
+
+  // optional overlay
+  if((H.overlayHex && H.overlayOpacity>0)){
+    const rgba = hexToRgba(H.overlayHex, H.overlayOpacity) || H.overlayHex;
+    parts.push(
+      `[data-wm-banner]::after{content:"";position:absolute;inset:0;background:${rgba}!important;pointer-events:none}`
+    );
+  }
+
+  // nav text color
   if(nav){
-    css+=`
+    parts.push(`
 [data-wm-color-scope]{--header-text-color:${nav}!important}
 [data-wm-color-scope] .header-nav-list a,
 [data-wm-color-scope] .site-navigation a,
@@ -263,19 +324,128 @@ function updateHeader(index){
   .header-menu a,.header-menu .nav-wrapper a,.sqs-mobile-overlay-menu a,.sqs-mobile-overlay-menu .nav-wrapper a{color:${nav}!important;fill:${nav}!important;stroke:${nav}!important}
   .header-menu .social-icons a,.sqs-mobile-overlay-menu .social-icons a,
   .header-menu .social-icons svg *,.sqs-mobile-overlay-menu .social-icons svg *{color:${nav}!important;fill:${nav}!important;stroke:${nav}!important}
-}
-`;
+}`);
   }
+
+  // header logo override
   if(logo){
-    css+=`[data-wm-color-scope] .header-title-logo img,[data-wm-color-scope] .site-logo img,[data-wm-color-scope] [class*="logo"] img,[data-wm-color-scope] .site-branding img{content:url("${logo}")!important;transition:opacity ${dur}ms ease-in-out!important}\n`;
+    parts.push(
+      `[data-wm-color-scope] .header-title-logo img,[data-wm-color-scope] .site-logo img,[data-wm-color-scope] [class*="logo"] img,[data-wm-color-scope] .site-branding img{content:url("${logo}")!important;transition:opacity ${dur}ms ease-in-out!important}`
+    );
   }
+
+  // mobile menu background color or image
   if(menuBg){
     const isImg=/^(https?:|data:)|\.(png|jpe?g|gif|webp|svg|avif)$/i.test(menuBg);
-    css+= isImg
-      ? `@media (max-width:768px){.header-menu,.header-menu .header-menu-bg,.sqs-mobile-overlay-menu{background-image:url('${menuBg}')!important;background-size:cover!important;background-position:center!important}}\n`
-      : `@media (max-width:768px){.header-menu,.header-menu .header-menu-bg,.sqs-mobile-overlay-menu{background:${menuBg}!important}}\n`;
+    parts.push(
+      isImg
+      ? `@media (max-width:768px){.header-menu,.header-menu .header-menu-bg,.sqs-mobile-overlay-menu{background-image:url('${menuBg}')!important;background-size:cover!important;background-position:center!important}}`
+      : `@media (max-width:768px){.header-menu,.header-menu .header-menu-bg,.sqs-mobile-overlay-menu{background:${menuBg}!important}}`
+    );
   }
-  injectHeaderCSS(css);
+
+  return parts.join('\n');
+}
+
+function buildFooterCSS(index){
+  const s=getSettings();
+  const F=s.dynamicFooter;
+  if(!F.enabled){ clearFooterMarks(); return ''; }
+
+  const {bannerCandidates, colorScopeCandidates}=buildFooterTargets();
+
+  const img=(F.images||[])[index]||'';
+  const bg =(F.backgroundColors||[])[index]||'';
+  const text =(F.textColors||[])[index]||'';
+  const link =(F.linkColors||[])[index] || text || '';
+  const icon =(F.iconColors||[])[index] || text || '';
+  const logo =(F.logoImages||[])[index]||'';
+
+  let dur=F.duration;
+  if(dur==='auto') dur=(swiper&&swiper.params&&swiper.params.speed)? swiper.params.speed : 500;
+
+  clearFooterMarks();
+  const footerEl=chooseBiggestEl(bannerCandidates);
+  if(footerEl) footerEl.setAttribute('data-wm-footer','');
+
+  let colorScopeEl=null;
+  for(const sel of colorScopeCandidates){
+    const el=document.querySelector(sel);
+    if(el){ colorScopeEl=el; break; }
+  }
+  if(!colorScopeEl) colorScopeEl=footerEl;
+  if(colorScopeEl) colorScopeEl.setAttribute('data-wm-footer-color-scope','');
+
+  // If nothing to set, clear and bail
+  const wantsOverlay = (F.overlayHex && F.overlayOpacity>0);
+  if(![img,bg,text,link,icon,logo].some(v=>v&&String(v).trim()) && !wantsOverlay){
+    return '';
+  }
+
+  const parts=[];
+  // background image or color
+  if(footerEl && img){
+    parts.push(
+      `[data-wm-footer]{background-image:url("${img}")!important;background-size:cover!important;background-position:center!important;background-repeat:no-repeat!important;transition:background ${dur}ms ease-in-out!important;position:relative!important}`
+    );
+  }else if(footerEl && bg){
+    parts.push(
+      `[data-wm-footer]{background-color:${bg}!important;background-image:none!important;transition:background-color ${dur}ms ease-in-out!important;position:relative!important}`
+    );
+  }
+
+  // optional overlay
+  if(wantsOverlay){
+    const rgba = hexToRgba(F.overlayHex, F.overlayOpacity) || F.overlayHex;
+    parts.push(
+      `[data-wm-footer]::after{content:"";position:absolute;inset:0;background:${rgba}!important;pointer-events:none}`
+    );
+  }
+
+  // text/link/icon colors
+  if(text || link || icon){
+    const t = text || 'inherit';
+    const a = link || t;
+    const i = icon || t;
+    parts.push(`
+[data-wm-footer-color-scope] { color:${t}!important }
+[data-wm-footer-color-scope] p,
+[data-wm-footer-color-scope] span,
+[data-wm-footer-color-scope] h1,
+[data-wm-footer-color-scope] h2,
+[data-wm-footer-color-scope] h3,
+[data-wm-footer-color-scope] h4,
+[data-wm-footer-color-scope] h5,
+[data-wm-footer-color-scope] h6 { color:${t}!important }
+[data-wm-footer-color-scope] a { color:${a}!important }
+[data-wm-footer-color-scope] svg, [data-wm-footer-color-scope] svg *, 
+[data-wm-footer-color-scope] .social-icons a,
+[data-wm-footer-color-scope] .social-icons svg * { color:${i}!important; fill:${i}!important; stroke:${i}!important }`);
+  }
+
+  // footer logo override
+  if(logo){
+    parts.push(
+      `[data-wm-footer-color-scope] [class*="logo"] img, [data-wm-footer-color-scope] .footer-logo img{content:url("${logo}")!important;transition:opacity ${dur}ms ease-in-out!important}`
+    );
+  }
+
+  return parts.join('\n');
+}
+
+/* Build & inject combined header+footer CSS for current slide */
+function applyHFStyles(index){
+  applyHamburgerColor(index); // still header-related
+
+  const hCSS = buildHeaderCSS(index);
+  const fCSS = buildFooterCSS(index);
+  const combined = [hCSS,fCSS].filter(Boolean).join('\n/* hf-sep */\n');
+
+  if(combined.trim().length){
+    injectHFCSS(`/* wm dynamic header/footer (scoped) */\n${combined}`);
+  }else{
+    injectHFCSS('');
+  }
 }
 
 /* ============================ B7. THUMBNAILS (build) ============================= */
@@ -283,7 +453,7 @@ function createThumbnails(){
   const S=getCurrentSettings();
   if(!S) return false;
 
-  // NEW: hide ONLY thumbnails on mobile, keep header features running
+  // NEW: hide ONLY thumbnails on mobile, keep header/footer features running
   if (isMobile && S.mobileDisableThumbnailsOnly) {
     document.querySelector('.auto-thumbnail-nav')?.remove();
     currentNav = null;
@@ -389,7 +559,9 @@ function createThumbnails(){
 /* ==================== B8. ACTIVE + TIMELINE LAYOUT (with bleed) ================== */
 function updateActive(index){
   const S=getCurrentSettings();
-  updateHeader(index); // header should always update
+
+  // Always keep header/footer synced with current slide
+  applyHFStyles(index);
 
   // NEW: if thumbnails are disabled on mobile, remove any existing nav and stop
   if (S && isMobile && S.mobileDisableThumbnailsOnly) {
@@ -508,8 +680,8 @@ function safeInitCycle(){
     const made=createThumbnails(); // may be false on mobile if thumbnails are disabled
     bindSwiperEvents();
     const i=swiper ? (swiper.realIndex ?? swiper.activeIndex ?? 0) : 0;
-    updateHeader(i);
-    updateActive(i); // header updates even if thumbs are disabled
+    applyHFStyles(i);
+    updateActive(i);
   }catch(e){}
 }
 function watchForSlides(){
@@ -536,7 +708,7 @@ function handleResize(){
       }
     }
 
-    updateHeader(i);
+    applyHFStyles(i);
     updateActive(i);
   }catch(e){}
 }
@@ -551,3 +723,4 @@ document.addEventListener('DOMContentLoaded', ()=>{
   watchForSlides();
 });
 })();
+</script>
