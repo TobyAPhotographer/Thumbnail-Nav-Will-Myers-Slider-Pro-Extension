@@ -1,11 +1,13 @@
-<!-- =====================================================================================
-   WM Thumbnail Nav + Dynamic Header + Dynamic Footer + Custom Hamburger (Squarespace / Will Myers)
-   (fix: no-crop for expanded thumb via configurable borders + bleed; absolute anchoring)
-   NEW:
-     • mobileDisableThumbnailsOnly — hides just thumbnails on mobile (keeps header/footer features)
-     • dynamicFooter — per-slide footer image OR hex color, link/text/icon color, optional logo, optional overlay
-     • dynamicHeader/ dynamicFooter — optional overlay via hex + opacity
-   ===================================================================================== -->
+
+/* =====================================================================================
+   WM Thumbnail Nav + Dynamic Header + Dynamic Footer + Custom Hamburger
+   (Squarespace / Will Myers)
+   - No-crop thumbs via borders + bleed
+   - Absolute anchoring presets OR manual coordinates
+   - mobileDisableThumbnailsOnly: hide only thumbnails on mobile (keep header/footer)
+   - Header + Footer: per-slide color OR image URL (auto-detect)
+   ===================================================================================== */
+
 (function(){
 'use strict';
 
@@ -13,19 +15,19 @@
 const DEFAULTS = {
   debug:false,
   width:80,
-  layout:'horizontal', // 'horizontal' | 'vertical'
-  aspect:'16:9',       // '16:9' | '1:1' | '9:16'
-  timeline:false,      // show 3-slot timeline
-  position:'bottom-center', // preset or 'manual'
-  anchorMode:'absolute',    // 'absolute' | 'fixed'
-  pinMode:false,            // if true, behaves like fixed regardless
+  layout:'horizontal',       // 'horizontal' | 'vertical'
+  aspect:'16:9',             // '16:9' | '1:1' | '9:16'
+  timeline:false,            // show 3-slot timeline
+  position:'bottom-center',  // presets: top/bottom/middle + left/center/right OR 'manual'
+  anchorMode:'absolute',     // 'absolute' | 'fixed'
+  pinMode:false,             // if true, behaves like fixed regardless
   manualPosition:{ top:'auto', bottom:'20px', left:'auto', right:'auto', transform:'none' },
 
   // Behavior on mobile
   disableOnMobile:false,             // disables EVERYTHING on mobile (legacy)
-  mobileDisableThumbnailsOnly:false, // NEW: hides ONLY the thumbnails on mobile (header/footer still work)
+  mobileDisableThumbnailsOnly:false, // hides ONLY the thumbnails on mobile (header/footer still run)
 
-  /* NEW: border controls */
+  /* Border controls (thumbs) */
   thumbBorder: 2,           // px, non-active border width
   thumbBorderActive: 6,     // px, active/selected border width
 
@@ -35,50 +37,42 @@ const DEFAULTS = {
   /* Optional custom images for thumbnails */
   customImages:{ enabled:false, images:[] },
 
+  /* Mobile-specific overrides */
   mobileSettings:null,
 
-  /* ===================== Dynamic header (existing, expanded) ===================== */
+  /* Dynamic HEADER */
   dynamicHeader:{
     enabled:false,
     selector:'[data-header-banner], .Header, .site-header, #header',
-    images:[],                     // per-slide header image URL
-    backgroundColors:[],           // per-slide hex (e.g. "#0a0a0a")
-    navTextColors:[],              // fallback nav color
-    mobileNavTextColors:[],        // optional override for mobile
-    desktopNavTextColors:[],       // optional override for desktop
-    mobileHamburgerImages:[],      // can be hex like "#fff" to color burger
-    mobileMenuBackgroundColors:[], // bg color/image for mobile menu
-    logoImages:[],                 // per-slide logo src override
+    images:[],                     // accepts color or image URL per slide
+    backgroundColors:[],           // optional fallback if images[] entry is empty
+    navTextColors:[],
+    mobileNavTextColors:[],
+    desktopNavTextColors:[],
+    mobileHamburgerImages:[],      // color/URL for burger lines
+    mobileMenuBackgroundColors:[], // color or image for mobile menu background
+    logoImages:[],                 // optional per-slide logo swap
     transition:'fade',
-    duration:'auto',
-    type:'background',
-    /* NEW: optional overlay/darken on header */
-    overlayHex:null,               // e.g. "#000000" or null
-    overlayOpacity:0               // 0..1
+    duration:'auto',               // uses swiper speed if 'auto'
+    type:'background'
   },
 
-  /* ====================== Dynamic footer (brand new) ============================= */
+  /* Dynamic FOOTER */
   dynamicFooter:{
     enabled:false,
-    selector:'[data-footer-banner], .Footer, .site-footer, footer, #footer, footer[role="contentinfo"], .sqs-site-footer',
-    images:[],                     // per-slide footer image URL
-    backgroundColors:[],           // per-slide hex (e.g. "#111827")
-    textColors:[],                 // footer text color
-    linkColors:[],                 // footer link color (falls back to textColors[i] if empty)
-    iconColors:[],                 // footer icon/svg color (falls back to textColors[i] if empty)
-    logoImages:[],                 // override footer logo img
+    selector:'footer, .Footer, .site-footer, [data-controller="SiteFooter"]',
+    images:[],                     // accepts color or image URL per slide
+    backgroundColors:[],           // optional fallback if images[] entry is empty
+    textColors:[],                 // footer text/link/icon color per slide
+    logoImages:[],                 // optional footer logo swap
     transition:'fade',
     duration:'auto',
-    type:'background',
-    /* NEW: optional overlay/darken on footer */
-    overlayHex:null,               // e.g. "#000000" or null
-    overlayOpacity:0               // 0..1
+    type:'background'
   }
 };
 
 /* ========================== B2. STATE & UTILITIES ================================ */
 let swiper=null, isMobile=window.innerWidth<=768, currentNav=null, slidesCache=null, sectionCache=null;
-
 const detectMobile=()=> window.innerWidth<=768;
 const deepMerge=(t,s)=>{ Object.keys(s).forEach(k=>{ if(s[k]&&typeof s[k]==='object'&&!Array.isArray(s[k])) t[k]=deepMerge({...(t[k]||{})},s[k]); else t[k]=s[k]; }); return t; };
 const getSettings=()=> deepMerge(JSON.parse(JSON.stringify(DEFAULTS)), window.thumbnailSettings||{});
@@ -90,30 +84,45 @@ const getCurrentSettings=()=>{
   return (!isMobile||!base.mobileSettings)? base : deepMerge(JSON.parse(JSON.stringify(base)), base.mobileSettings);
 };
 
-/* Color utils */
-const clamp=(v,min,max)=> Math.min(max,Math.max(min,v));
-function hexToRgba(hex, alpha=1){
-  if(!hex || typeof hex!=='string') return null;
-  const h = hex.replace('#','').trim();
-  if(!/^[0-9a-fA-F]{3,8}$/.test(h)) return null;
-  let r,g,b;
-  if(h.length===3){
-    r=parseInt(h[0]+h[0],16); g=parseInt(h[1]+h[1],16); b=parseInt(h[2]+h[2],16);
-  }else{
-    r=parseInt(h.slice(0,2),16); g=parseInt(h.slice(2,4),16); b=parseInt(h.slice(4,6),16);
-  }
-  const a = clamp(+alpha||0,0,1);
-  return `rgba(${r},${g},${b},${a})`;
+/* Color & URL detection */
+const COLOR_RX = /^#([0-9a-f]{3,8})$/i;
+function looksLikeColor(v){
+  if(!v) return false;
+  const s=String(v).trim();
+  if(COLOR_RX.test(s)) return true;
+  if(/^rgba?\(/i.test(s)) return true;
+  if(/^hsla?\(/i.test(s)) return true;
+  if(/^(oklch|oklab|lab|lch|color)\(/i.test(s)) return true;
+  if(['transparent','currentColor','black','white'].includes(s.toLowerCase())) return true;
+  return false;
+}
+function looksLikeImageURL(v){
+  if(!v) return false;
+  const s=String(v).trim();
+  if(/^data:image\//i.test(s)) return true;
+  if(/^https?:\/\//i.test(s)) return true;
+  if(/\.(png|jpe?g|gif|webp|avif|svg)(\?|#|$)/i.test(s)) return true;
+  return false;
 }
 
-/* Single shared CSS bucket for header + footer */
-const STYLE_ID='wm-dynamic-hf-style';
-const injectHFCSS=(css)=>{
+/* Dynamic header/footer CSS buckets */
+const STYLE_ID='wm-dynamic-header-style';
+const FOOTER_STYLE_ID='wm-dynamic-footer-style';
+const injectHeaderCSS=css=>{
   const old=document.getElementById(STYLE_ID);
   if(old) old.remove();
   if(!css) return;
   const st=document.createElement('style');
   st.id=STYLE_ID;
+  st.textContent=css;
+  document.head.appendChild(st);
+};
+const injectFooterCSS=css=>{
+  const old=document.getElementById(FOOTER_STYLE_ID);
+  if(old) old.remove();
+  if(!css) return;
+  const st=document.createElement('style');
+  st.id=FOOTER_STYLE_ID;
   st.textContent=css;
   document.head.appendChild(st);
 };
@@ -175,18 +184,14 @@ function extractImage(slide){
   return 'none';
 }
 
-/* ====================== B5. HEADER/FOOTER TARGETING + HAMBURGER ================== */
-function clearHeaderMarks(){
+/* ====================== B5. HEADER/FOOTER TARGETS & HAMBURGER =================== */
+function clearBannerMarks(){
   document.querySelectorAll('[data-wm-banner]').forEach(el=>el.removeAttribute('data-wm-banner'));
   document.querySelectorAll('[data-wm-color-scope]').forEach(el=>el.removeAttribute('data-wm-color-scope'));
 }
-function clearFooterMarks(){
-  document.querySelectorAll('[data-wm-footer]').forEach(el=>el.removeAttribute('data-wm-footer'));
-  document.querySelectorAll('[data-wm-footer-color-scope]').forEach(el=>el.removeAttribute('data-wm-footer-color-scope'));
-}
-function chooseBiggestEl(selectors){
+function chooseBannerEl(selectors){
   const c=[];
-  selectors.forEach(sel=>{
+  (Array.isArray(selectors)?selectors:[selectors]).forEach(sel=>{
     document.querySelectorAll(sel).forEach(el=>{
       if(el.matches('.header-nav, .site-navigation')) return;
       c.push(el);
@@ -195,18 +200,27 @@ function chooseBiggestEl(selectors){
   if(!c.length) return null;
   return c.reduce((a,b)=> (a.getBoundingClientRect().height>=b.getBoundingClientRect().height? a : b));
 }
-function buildHeaderTargets(){
+function buildTargets(){
   const bannerCandidates=['[data-header-banner]','.Header','.site-header','#header','[data-controller="HeaderOverlay"]','header[role="banner"]','header.header'];
   const colorScopeCandidates=['.Header','.site-header','#header','[data-controller="HeaderOverlay"]','header[role="banner"]'];
   return {bannerCandidates, colorScopeCandidates};
 }
-function buildFooterTargets(){
-  const bannerCandidates=['[data-footer-banner]','.Footer','.site-footer','footer','#footer','footer[role="contentinfo"]','.sqs-site-footer'];
-  const colorScopeCandidates=['.Footer','.site-footer','footer','#footer','footer[role="contentinfo"]','.sqs-site-footer'];
-  return {bannerCandidates, colorScopeCandidates};
+
+/* Footer marks */
+function clearFooterMarks(){
+  document.querySelectorAll('[data-wm-footer]').forEach(el=>el.removeAttribute('data-wm-footer'));
+  document.querySelectorAll('[data-wm-footer-color-scope]').forEach(el=>el.removeAttribute('data-wm-footer-color-scope'));
+}
+function chooseFooterEl(selectors){
+  const c=[];
+  (Array.isArray(selectors)?selectors:[selectors]).forEach(sel=>{
+    document.querySelectorAll(sel).forEach(el=>c.push(el));
+  });
+  if(!c.length) return null;
+  return c.reduce((a,b)=> (a.getBoundingClientRect().height>=b.getBoundingClientRect().height? a : b));
 }
 
-/* Hamburger (for header) */
+/* Hamburger helpers */
 function flagHamburgerButtons(root=document){
   const sel=['.burger','.header-burger','[class*="burger"]','.mobile-nav-toggle','.sqs-mobile-menu-toggle','.header-menu-toggle','.header-actions .header-menu-toggle','button[aria-controls*="header"]','[data-action="toggle-mobile-menu"]'].join(',');
   root.querySelectorAll(sel).forEach(btn=>{
@@ -247,68 +261,66 @@ function syncHamburgerOpenState(){
   mo.observe(document.body,{attributes:true,attributeFilter:['class']});
 }
 
-/* ============================ B6. HEADER + FOOTER CSS ============================ */
-function buildHeaderCSS(index){
+/* ============================ B6. DYNAMIC HEADER ================================= */
+function updateHeader(index){
   const s=getSettings();
-  const H=s.dynamicHeader;
-  if(!H.enabled){ clearHeaderMarks(); return ''; }
+  applyHamburgerColor(index);
 
-  const {bannerCandidates, colorScopeCandidates}=buildHeaderTargets();
+  if(!s.dynamicHeader.enabled){
+    injectHeaderCSS('');
+    clearBannerMarks();
+    return;
+  }
 
-  const img=(H.images||[])[index]||'';
-  const bg =(H.backgroundColors||[])[index]||'';
+  const {bannerCandidates, colorScopeCandidates}=buildTargets();
+
+  // Unified source: color or URL (fallback to backgroundColors if empty)
+  const src=(s.dynamicHeader.images||[])[index]||'';
+  const bgFallback=(s.dynamicHeader.backgroundColors||[])[index]||'';
 
   let nav='';
-  if(isMobile && H.mobileNavTextColors?.[index]) nav=H.mobileNavTextColors[index];
-  else if(!isMobile && H.desktopNavTextColors?.[index]) nav=H.desktopNavTextColors[index];
-  else if(H.navTextColors?.[index]) nav=H.navTextColors[index];
+  if(isMobile && s.dynamicHeader.mobileNavTextColors?.[index]) nav=s.dynamicHeader.mobileNavTextColors[index];
+  else if(!isMobile && s.dynamicHeader.desktopNavTextColors?.[index]) nav=s.dynamicHeader.desktopNavTextColors[index];
+  else if(s.dynamicHeader.navTextColors?.[index]) nav=s.dynamicHeader.navTextColors[index];
 
-  const logo=(H.logoImages||[])[index]||'';
-  const menuBg=(H.mobileMenuBackgroundColors||[])[index]||'';
+  const logo=(s.dynamicHeader.logoImages||[])[index]||'';
+  const menuBg=(s.dynamicHeader.mobileMenuBackgroundColors||[])[index]||'';
 
-  let dur=H.duration;
+  const bannerColor = looksLikeColor(src) ? src : (bgFallback || '');
+  const bannerImage = looksLikeImageURL(src) ? src : '';
+
+  if(![bannerColor,bannerImage,nav,logo,menuBg].some(v=>v&&String(v).trim())){
+    injectHeaderCSS('');
+    clearBannerMarks();
+    return;
+  }
+
+  let dur=s.dynamicHeader.duration;
   if(dur==='auto') dur=(swiper&&swiper.params&&swiper.params.speed)? swiper.params.speed : 500;
 
-  clearHeaderMarks();
-  const bannerEl=chooseBiggestEl(bannerCandidates);
+  clearBannerMarks();
+  const bannerEl=chooseBannerEl(s.dynamicHeader.selector || ['[data-header-banner]','.Header','.site-header','#header']);
   if(bannerEl) bannerEl.setAttribute('data-wm-banner','');
 
   let colorScopeEl=null;
-  for(const sel of colorScopeCandidates){
+  const scopes=['.Header','.site-header','#header','[data-controller="HeaderOverlay"]','header[role="banner"]'];
+  for(const sel of scopes){
     const el=document.querySelector(sel);
     if(el){ colorScopeEl=el; break; }
   }
   if(!colorScopeEl) colorScopeEl=bannerEl;
   if(colorScopeEl) colorScopeEl.setAttribute('data-wm-color-scope','');
 
-  // If nothing to set, clear and bail
-  if(![img,bg,nav,logo,menuBg].some(v=>v&&String(v).trim()) && !(H.overlayHex && H.overlayOpacity>0)){
-    return '';
+  let css='/* wm dynamic header (scoped, color-or-image) */\n';
+  if(bannerEl){
+    if(bannerImage){
+      css+=`[data-wm-banner]{background-image:url("${bannerImage}")!important;background-size:cover!important;background-position:center!important;background-repeat:no-repeat!important;transition:background ${dur}ms ease-in-out, background-color ${dur}ms ease-in-out!important}\n`;
+    }else if(bannerColor){
+      css+=`[data-wm-banner]{background-color:${bannerColor}!important;background-image:none!important;transition:background-color ${dur}ms ease-in-out!important}\n`;
+    }
   }
-
-  const parts=[];
-  // background image or color
-  if(bannerEl && img){
-    parts.push(
-      `[data-wm-banner]{background-image:url("${img}")!important;background-size:cover!important;background-position:center!important;background-repeat:no-repeat!important;transition:background ${dur}ms ease-in-out!important;position:relative!important}`
-    );
-  }else if(bannerEl && bg){
-    parts.push(
-      `[data-wm-banner]{background-color:${bg}!important;background-image:none!important;transition:background-color ${dur}ms ease-in-out!important;position:relative!important}`
-    );
-  }
-
-  // optional overlay
-  if((H.overlayHex && H.overlayOpacity>0)){
-    const rgba = hexToRgba(H.overlayHex, H.overlayOpacity) || H.overlayHex;
-    parts.push(
-      `[data-wm-banner]::after{content:"";position:absolute;inset:0;background:${rgba}!important;pointer-events:none}`
-    );
-  }
-
-  // nav text color
   if(nav){
-    parts.push(`
+    css+=`
 [data-wm-color-scope]{--header-text-color:${nav}!important}
 [data-wm-color-scope] .header-nav-list a,
 [data-wm-color-scope] .site-navigation a,
@@ -323,128 +335,77 @@ function buildHeaderCSS(index){
   .header-menu a,.header-menu .nav-wrapper a,.sqs-mobile-overlay-menu a,.sqs-mobile-overlay-menu .nav-wrapper a{color:${nav}!important;fill:${nav}!important;stroke:${nav}!important}
   .header-menu .social-icons a,.sqs-mobile-overlay-menu .social-icons a,
   .header-menu .social-icons svg *,.sqs-mobile-overlay-menu .social-icons svg *{color:${nav}!important;fill:${nav}!important;stroke:${nav}!important}
-}`);
+}
+`;
   }
-
-  // header logo override
   if(logo){
-    parts.push(
-      `[data-wm-color-scope] .header-title-logo img,[data-wm-color-scope] .site-logo img,[data-wm-color-scope] [class*="logo"] img,[data-wm-color-scope] .site-branding img{content:url("${logo}")!important;transition:opacity ${dur}ms ease-in-out!important}`
-    );
+    css+=`[data-wm-color-scope] .header-title-logo img,[data-wm-color-scope] .site-logo img,[data-wm-color-scope] [class*="logo"] img,[data-wm-color-scope] .site-branding img{content:url("${logo}")!important;transition:opacity ${dur}ms ease-in-out!important}\n`;
   }
-
-  // mobile menu background color or image
   if(menuBg){
-    const isImg=/^(https?:|data:)|\.(png|jpe?g|gif|webp|svg|avif)$/i.test(menuBg);
-    parts.push(
-      isImg
-      ? `@media (max-width:768px){.header-menu,.header-menu .header-menu-bg,.sqs-mobile-overlay-menu{background-image:url('${menuBg}')!important;background-size:cover!important;background-position:center!important}}`
-      : `@media (max-width:768px){.header-menu,.header-menu .header-menu-bg,.sqs-mobile-overlay-menu{background:${menuBg}!important}}`
-    );
+    const isImg=/^(https?:|data:)|\.(png|jpe?g|gif|webp|svg|avif)(\?|#|$)/i.test(menuBg);
+    css+= isImg
+      ? `@media (max-width:768px){.header-menu,.header-menu .header-menu-bg,.sqs-mobile-overlay-menu{background-image:url('${menuBg}')!important;background-size:cover!important;background-position:center!important}}\n`
+      : `@media (max-width:768px){.header-menu,.header-menu .header-menu-bg,.sqs-mobile-overlay-menu{background:${menuBg}!important}}\n`;
   }
-
-  return parts.join('\n');
+  injectHeaderCSS(css);
 }
 
-function buildFooterCSS(index){
+/* ============================ B6b. DYNAMIC FOOTER ================================ */
+function updateFooter(index){
   const s=getSettings();
-  const F=s.dynamicFooter;
-  if(!F.enabled){ clearFooterMarks(); return ''; }
+  if(!s.dynamicFooter?.enabled){
+    injectFooterCSS('');
+    clearFooterMarks();
+    return;
+  }
 
-  const {bannerCandidates, colorScopeCandidates}=buildFooterTargets();
+  const src = (s.dynamicFooter.images||[])[index] || '';
+  const bgFallback = (s.dynamicFooter.backgroundColors||[])[index] || '';
+  const text = (s.dynamicFooter.textColors||[])[index] || '';
+  const logo = (s.dynamicFooter.logoImages||[])[index] || '';
 
-  const img=(F.images||[])[index]||'';
-  const bg =(F.backgroundColors||[])[index]||'';
-  const text =(F.textColors||[])[index]||'';
-  const link =(F.linkColors||[])[index] || text || '';
-  const icon =(F.iconColors||[])[index] || text || '';
-  const logo =(F.logoImages||[])[index]||'';
+  const bannerColor = looksLikeColor(src) ? src : (bgFallback || '');
+  const bannerImage = looksLikeImageURL(src) ? src : '';
 
-  let dur=F.duration;
+  if(![bannerColor,bannerImage,text,logo].some(v=>v&&String(v).trim())){
+    injectFooterCSS('');
+    clearFooterMarks();
+    return;
+  }
+
+  let dur=s.dynamicFooter.duration;
   if(dur==='auto') dur=(swiper&&swiper.params&&swiper.params.speed)? swiper.params.speed : 500;
 
   clearFooterMarks();
-  const footerEl=chooseBiggestEl(bannerCandidates);
+  const footerEl = chooseFooterEl(s.dynamicFooter.selector || 'footer, .Footer, .site-footer, [data-controller="SiteFooter"]');
   if(footerEl) footerEl.setAttribute('data-wm-footer','');
+  if(footerEl) footerEl.setAttribute('data-wm-footer-color-scope','');
 
-  let colorScopeEl=null;
-  for(const sel of colorScopeCandidates){
-    const el=document.querySelector(sel);
-    if(el){ colorScopeEl=el; break; }
+  let css='/* wm dynamic footer (scoped, color-or-image) */\n';
+  if(footerEl){
+    if(bannerImage){
+      css+=`[data-wm-footer]{background-image:url("${bannerImage}")!important;background-size:cover!important;background-position:center!important;background-repeat:no-repeat!important;transition:background ${dur}ms ease-in-out, background-color ${dur}ms ease-in-out!important}\n`;
+    }else if(bannerColor){
+      css+=`[data-wm-footer]{background-color:${bannerColor}!important;background-image:none!important;transition:background-color ${dur}ms ease-in-out!important}\n`;
+    }
   }
-  if(!colorScopeEl) colorScopeEl=footerEl;
-  if(colorScopeEl) colorScopeEl.setAttribute('data-wm-footer-color-scope','');
-
-  // If nothing to set, clear and bail
-  const wantsOverlay = (F.overlayHex && F.overlayOpacity>0);
-  if(![img,bg,text,link,icon,logo].some(v=>v&&String(v).trim()) && !wantsOverlay){
-    return '';
-  }
-
-  const parts=[];
-  // background image or color
-  if(footerEl && img){
-    parts.push(
-      `[data-wm-footer]{background-image:url("${img}")!important;background-size:cover!important;background-position:center!important;background-repeat:no-repeat!important;transition:background ${dur}ms ease-in-out!important;position:relative!important}`
-    );
-  }else if(footerEl && bg){
-    parts.push(
-      `[data-wm-footer]{background-color:${bg}!important;background-image:none!important;transition:background-color ${dur}ms ease-in-out!important;position:relative!important}`
-    );
-  }
-
-  // optional overlay
-  if(wantsOverlay){
-    const rgba = hexToRgba(F.overlayHex, F.overlayOpacity) || F.overlayHex;
-    parts.push(
-      `[data-wm-footer]::after{content:"";position:absolute;inset:0;background:${rgba}!important;pointer-events:none}`
-    );
-  }
-
-  // text/link/icon colors
-  if(text || link || icon){
-    const t = text || 'inherit';
-    const a = link || t;
-    const i = icon || t;
-    parts.push(`
-[data-wm-footer-color-scope] { color:${t}!important }
-[data-wm-footer-color-scope] p,
-[data-wm-footer-color-scope] span,
-[data-wm-footer-color-scope] h1,
-[data-wm-footer-color-scope] h2,
-[data-wm-footer-color-scope] h3,
-[data-wm-footer-color-scope] h4,
-[data-wm-footer-color-scope] h5,
-[data-wm-footer-color-scope] h6 { color:${t}!important }
-[data-wm-footer-color-scope] a { color:${a}!important }
-[data-wm-footer-color-scope] svg, [data-wm-footer-color-scope] svg *, 
-[data-wm-footer-color-scope] .social-icons a,
-[data-wm-footer-color-scope] .social-icons svg * { color:${i}!important; fill:${i}!important; stroke:${i}!important }`);
-  }
-
-  // footer logo override
-  if(logo){
-    parts.push(
-      `[data-wm-footer-color-scope] [class*="logo"] img, [data-wm-footer-color-scope] .footer-logo img{content:url("${logo}")!important;transition:opacity ${dur}ms ease-in-out!important}`
-    );
-  }
-
-  return parts.join('\n');
+  if(text){
+    css+=`
+[data-wm-footer-color-scope]{--footer-text:${text}!important}
+[data-wm-footer-color-scope],
+[data-wm-footer-color-scope] a,
+[data-wm-footer-color-scope] .sqs-block-content,
+[data-wm-footer-color-scope] svg *,
+[data-wm-footer-color-scope] .social-icons a{
+  color:${text}!important; fill:${text}!important; stroke:${text}!important;
 }
-
-/* Build & inject combined header+footer CSS for current slide */
-function applyHFStyles(index){
-  applyHamburgerColor(index); // still header-related
-
-  const hCSS = buildHeaderCSS(index);
-  const fCSS = buildFooterCSS(index);
-  const combined = [hCSS,fCSS].filter(Boolean).join('\n/* hf-sep */\n');
-
-  if(combined.trim().length){
-    injectHFCSS(`/* wm dynamic header/footer (scoped) */\n${combined}`);
-  }else{
-    injectHFCSS('');
+`;
   }
+  if(logo){
+    css+=`[data-wm-footer-color-scope] .footer-logo img,[data-wm-footer-color-scope] [class*="footer"] [class*="logo"] img{content:url("${logo}")!important;transition:opacity ${dur}ms ease-in-out!important}\n`;
+  }
+
+  injectFooterCSS(css);
 }
 
 /* ============================ B7. THUMBNAILS (build) ============================= */
@@ -452,7 +413,7 @@ function createThumbnails(){
   const S=getCurrentSettings();
   if(!S) return false;
 
-  // NEW: hide ONLY thumbnails on mobile, keep header/footer features running
+  // Hide ONLY thumbnails on mobile, keep header/footer features
   if (isMobile && S.mobileDisableThumbnailsOnly) {
     document.querySelector('.auto-thumbnail-nav')?.remove();
     currentNav = null;
@@ -482,13 +443,29 @@ function createThumbnails(){
     nav.classList.add(S.position);
   }
 
-  // Pass border widths down as CSS variables so CSS stays declarative
+  // Pass border widths to CSS variables
   nav.style.setProperty('--wm-thumb-border', (S.thumbBorder||2) + 'px');
   nav.style.setProperty('--wm-thumb-border-active', (S.thumbBorderActive||6) + 'px');
 
   const gap=calcGap(S.width), H=calcH(S.width,S.aspect);
-  nav.style.gap = gap+'px';
+  nav.style.setProperty('--wm-gap', gap+'px');
 
+  // Non-timeline: ensure clean row/column via inline flex (safety net)
+  if(!S.timeline){
+    nav.style.display='flex';
+    nav.style.alignItems='center';
+    if(S.layout==='horizontal'){
+      nav.style.flexDirection='row';
+      nav.style.gap=gap+'px';
+      nav.style.justifyContent='center';
+    }else{
+      nav.style.flexDirection='column';
+      nav.style.gap=gap+'px';
+      nav.style.justifyContent='center';
+    }
+  }
+
+  // Timeline container sizing
   if(S.timeline){
     if(S.layout==='horizontal'){
       nav.style.width=(S.width*3 + gap*2)+'px';
@@ -522,12 +499,10 @@ function createThumbnails(){
     }
 
     t.addEventListener('click', ()=>{
-      /* Only use "clicked-active" pop outside timeline mode */
       if (!S.timeline) {
         document.querySelectorAll('.auto-slide-thumbnail').forEach(x=>x.classList.remove('clicked-active'));
         t.classList.add('clicked-active');
       }
-
       if(swiper){
         if(swiper.slideToLoop) swiper.slideToLoop(i);
         else if(swiper.slideTo) swiper.slideTo(i);
@@ -558,11 +533,10 @@ function createThumbnails(){
 /* ==================== B8. ACTIVE + TIMELINE LAYOUT (with bleed) ================== */
 function updateActive(index){
   const S=getCurrentSettings();
+  updateHeader(index);
+  updateFooter(index); // keep footer in sync
 
-  // Always keep header/footer synced with current slide
-  applyHFStyles(index);
-
-  // NEW: if thumbnails are disabled on mobile, remove any existing nav and stop
+  // If thumbnails are disabled on mobile, remove and stop
   if (S && isMobile && S.mobileDisableThumbnailsOnly) {
     document.querySelector('.auto-thumbnail-nav')?.remove();
     currentNav = null;
@@ -577,17 +551,14 @@ function updateActive(index){
     const gap=calcGap(S.width), H=calcH(S.width,S.aspect);
     const visible=[0,1,2].map(o=>(index+o)%total);
 
-    // >>> Bleed: account for scale AND the ACTIVE border width set in settings
     const scale = Number(S.timelineScale || 1.0);
-    const border = Number(S.thumbBorderActive || 6); // match CSS var --wm-thumb-border-active
+    const border = Number(S.thumbBorderActive || 6);
     const bleedX = Math.ceil((S.width * (scale - 1)) / 2) + border;
     const bleedY = Math.ceil((H * (scale - 1)) / 2) + border;
 
-    // Baseline padding (protect both sides so borders never clip)
     let padL=border, padR=border, padT=border, padB=border;
-
-    // Directional extra padding grows away from the anchor (keeps panel from “drifting”)
     const c = currentNav ? currentNav.classList : {contains:()=>false};
+
     if(S.layout==='horizontal'){
       if(c.contains('top-right')||c.contains('bottom-right')||c.contains('middle-right')) padL += bleedX;
       else if(c.contains('top-left')||c.contains('bottom-left')||c.contains('middle-left')) padR += bleedX;
@@ -596,10 +567,9 @@ function updateActive(index){
       if(c.contains('bottom-right')||c.contains('bottom-left')||c.contains('bottom-center')) padT += bleedY;
       else if(c.contains('top-right')||c.contains('top-left')||c.contains('top-center')) padB += bleedY;
       else { const half=Math.ceil(bleedY/2); padT+=half; padB+=(bleedY-half); }
-      padL += 6; padR += 6; // small LR buffer for vertical stacks
+      padL += 6; padR += 6;
     }
 
-    // Base content area (3 slots)
     const baseW = (S.layout==='horizontal') ? (S.width*3 + gap*2) : S.width;
     const baseH = (S.layout==='horizontal') ? H : (H*3 + gap*2);
 
@@ -609,7 +579,6 @@ function updateActive(index){
       currentNav.style.height = (baseH + padT + padB) + 'px';
     }
 
-    // Slot positions relative to the padding box
     const slots = (S.layout==='horizontal') ? [
       {left:(0*(S.width+gap)) + 'px', top:'0px'},
       {left:(1*(S.width+gap)) + 'px', top:'0px'},
@@ -679,8 +648,9 @@ function safeInitCycle(){
     const made=createThumbnails(); // may be false on mobile if thumbnails are disabled
     bindSwiperEvents();
     const i=swiper ? (swiper.realIndex ?? swiper.activeIndex ?? 0) : 0;
-    applyHFStyles(i);
-    updateActive(i);
+    updateHeader(i);
+    updateFooter(i);
+    updateActive(i); // header/footer update even if thumbs are disabled
   }catch(e){}
 }
 function watchForSlides(){
@@ -693,7 +663,7 @@ function watchForSlides(){
 }
 function handleResize(){
   try{
-    isMobile = detectMobile(); // refresh mobile state
+    isMobile = detectMobile();
     const S = getCurrentSettings();
     const i = swiper ? (swiper.realIndex ?? swiper.activeIndex ?? 0) : 0;
     const blockThumbs = S && isMobile && S.mobileDisableThumbnailsOnly;
@@ -701,13 +671,12 @@ function handleResize(){
     if (blockThumbs) {
       document.querySelector('.auto-thumbnail-nav')?.remove();
       currentNav = null;
-    } else {
-      if (!document.querySelector('.auto-thumbnail-nav')) {
-        createThumbnails(); // rebuild when returning to desktop / larger screens
-      }
+    } else if (!document.querySelector('.auto-thumbnail-nav')) {
+      createThumbnails(); // rebuild when returning to desktop / bigger view
     }
 
-    applyHFStyles(i);
+    updateHeader(i);
+    updateFooter(i);
     updateActive(i);
   }catch(e){}
 }
