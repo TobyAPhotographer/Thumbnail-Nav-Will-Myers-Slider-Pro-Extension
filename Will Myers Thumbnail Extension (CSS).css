@@ -1,12 +1,6 @@
 /* =====================================================================================
-   WM Thumbnail Nav + Dynamic Header + Custom Hamburger (Squarespace / Will Myers)
-   (fix: no-crop for expanded thumb via configurable borders + bleed; absolute anchoring)
-   NEW: mobileDisableThumbnailsOnly — hides just thumbnails on mobile (keeps header features)
+   WM Thumbnail Nav + Dynamic Header/Footer + Custom Hamburger (Styles)
    ===================================================================================== */
-
-/* ╔══════════════════════════════════════════════════════════════════════════════════╗
-   ║ [A] BASE STYLES                                                                 ║
-   ╚══════════════════════════════════════════════════════════════════════════════════╝ */
 
 /* A1) Container & presets */
 .auto-thumbnail-nav{position:absolute;display:flex;z-index:1000}
@@ -14,13 +8,19 @@
 .auto-thumbnail-nav.horizontal{flex-direction:row;flex-wrap:nowrap;align-items:center}
 .auto-thumbnail-nav.vertical{flex-direction:column;flex-wrap:nowrap;align-items:flex-start}
 
-/* A2) Timeline track (off-track thumbs are clipped; JS adds padding so actives never clip) */
+/* Non-timeline layout: neat row/column */
+.auto-thumbnail-nav:not(.timeline-mode).horizontal{justify-content:center; gap: var(--wm-gap, 12px)}
+.auto-thumbnail-nav:not(.timeline-mode).vertical{align-items:center; justify-content:center; gap: var(--wm-gap, 12px)}
+
+/* Timeline track (off-track thumbs are clipped; JS pads so actives never clip) */
 .auto-thumbnail-nav.timeline-mode{
   display:block; overflow:hidden;
   position:relative; box-sizing:content-box;
 }
+/* Ensure absolute slotting inside timeline mode */
+.auto-thumbnail-nav.timeline-mode .auto-slide-thumbnail{position:absolute !important}
 
-/* A3) Preset positions (base; JS may also enforce anchoring) */
+/* A3) Preset positions */
 .auto-thumbnail-nav.bottom-center{bottom:40px;left:50%;transform:translateX(-50%)}
 .auto-thumbnail-nav.bottom-left{bottom:40px;left:40px}
 .auto-thumbnail-nav.bottom-right{bottom:40px;right:40px}
@@ -31,13 +31,13 @@
 .auto-thumbnail-nav.middle-right{top:50%;right:40px;transform:translateY(-50%)}
 .auto-thumbnail-nav.middle-center{top:50%;left:50%;transform:translate(-50%,-50%)}
 
-/* A4) Thumbnails (use CSS variables so JS can set sizes from settings) */
+/* A4) Thumbnails */
 .auto-slide-thumbnail{
   --wm-thumb-border: 2px;
   --wm-thumb-border-active: 6px;
   background-size:cover;background-position:center;border-radius:6px;cursor:pointer;opacity:.6;
-  transition:all .3s cubic-bezier(.4,0,.2,1)!important;border:var(--wm-thumb-border) solid transparent;box-sizing:border-box;flex-shrink:0;z-index:1;
-  transform:scale(1)!important;position:relative;
+  transition:all .3s cubic-bezier(.4,0,.2,1)!important;border:var(--wm-thumb-border) solid transparent;
+  box-sizing:border-box;flex-shrink:0;z-index:1;transform:scale(1)!important;position:relative;
 }
 .auto-slide-thumbnail:hover{opacity:.9!important;transform:scale(1.12)!important;z-index:5!important;border-color:rgba(255,255,255,.7)!important;box-shadow:0 2px 8px rgba(0,0,0,.2)!important}
 /* steady in timeline */
@@ -49,12 +49,12 @@
 .auto-slide-thumbnail.clicked-active{transform:scale(1.15)!important;z-index:5!important;opacity:1!important;border-color:#fff!important;border-width:var(--wm-thumb-border-active)!important;box-shadow:0 4px 12px rgba(0,0,0,.4)!important}
 .auto-slide-thumbnail.clicked-active:hover{transform:scale(1.2)!important;box-shadow:0 6px 16px rgba(0,0,0,.5)!important}
 
-/* A5) Hide off-track thumbs fully (timeline) */
+/* Hide off-track thumbs fully (timeline) */
 .auto-slide-thumbnail.wm-hidden{
   opacity:0 !important; visibility:hidden !important; pointer-events:none !important; transform:scale(.9) !important; z-index:0 !important;
 }
 
-/* A6) Scoped header colors (do not touch Will Myers arrows) */
+/* Header color scope (don’t alter Will Myers arrows) */
 [data-wm-color-scope] .header-actions a,
 [data-wm-color-scope] .header-actions [role="link"],
 [data-wm-color-scope] .header-nav-list a,
@@ -72,7 +72,14 @@
   color:unset!important; fill:unset!important; stroke:unset!important
 }
 
-/* A7) Mobile hamburger overlay / recolor */
+/* Footer color scope: smooth text/icon color transitions */
+[data-wm-footer-color-scope] a,
+[data-wm-footer-color-scope] *,
+[data-wm-footer-color-scope] svg *{
+  transition: color .42s ease, fill .42s ease, stroke .42s ease;
+}
+
+/* Mobile hamburger overlay / recolor */
 @media (max-width:768px){
   [data-wm-hamburger]{
     position:relative!important; min-width:44px!important; min-height:44px!important;
